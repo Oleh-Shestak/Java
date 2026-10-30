@@ -11,10 +11,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Collection;
 
-/**
- * Опрацьовує HTTP запити й помилки, які виникають.
- * Повертає правильні коди відповіді.
- */
 @RequestMapping("/cats")
 @RestController
 public class CatController {
@@ -33,28 +29,25 @@ public class CatController {
         if (behaviour != null) {
             return catService.getCatsByBehaviour(behaviour);
         }
-
         return catService.getAllCats();
     }
 
     @GetMapping("/{catName}")
     public Cat getCat(@PathVariable("catName") String catName) {
         log.debug("Getting cat. Cat name: {}", catName);
-
-        if (catService.getCat(catName) == null) {
+        Cat cat = catService.getCat(catName);
+        if (cat == null) {
             log.debug("Cat '{}' was not found.", catName);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-
         log.debug("Cat '{}' was found.", catName);
-        return catService.getCat(catName);
+        return cat;
     }
 
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping
     public Cat createCat(@RequestBody Cat cat) {
         log.debug("Creating a cat. Cat: {}", cat);
-
         if (catService.addCat(cat)) {
             log.debug("Cat '{}' was created successfully.", cat.getName());
             return catService.getCat(cat.getName());
@@ -71,7 +64,6 @@ public class CatController {
             log.debug("Cat '{}' was not updated as it was not found.", catName);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-
         log.debug("Cat '{}' was updated successfully.", catName);
         return catService.updateCat(cat);
     }
@@ -84,7 +76,6 @@ public class CatController {
             log.debug("Cat '{}' was not deleted as it was not found.", catName);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-
         log.debug("Cat '{}' was deleted successfully.", catName);
         return catService.deleteCat(catName);
     }

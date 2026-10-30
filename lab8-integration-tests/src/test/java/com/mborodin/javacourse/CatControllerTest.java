@@ -1,117 +1,142 @@
 package com.mborodin.javacourse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mborodin.javacourse.model.Cat;
 import com.mborodin.javacourse.model.CatBehaviour;
 import com.mborodin.javacourse.repository.CatRepository;
-import jakarta.inject.Inject;
-import jakarta.servlet.ServletContext;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.MediaType;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.mock.web.MockServletContext;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
-import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
-import tools.jackson.databind.ObjectMapper;
 
-import java.util.List;
+import static org.hamcrest.Matchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-@ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = {TestJpaConfig.class, Main.class})
-@EnableJpaRepositories(basePackages = "com.mborodin.javacourse")
-@TestPropertySource(locations = "classpath:application.properties")
-@WebAppConfiguration
+@SpringBootTest(classes = Main.class)
+@AutoConfigureMockMvc
+@Import(TestJpaConfig.class)
 public class CatControllerTest {
 
-    // За допомогою анотації Inject (інколи Autowired) можна додавати (інжектити) потрібні біни в тест.
-    // Це використання патерну інʼєкція залежностей (Dependency injection).
-    @Inject
-    private WebApplicationContext webApplicationContext;
-    @Inject
-    private ObjectMapper objectMapper;
-    @Inject
-    private CatRepository catRepository;
-
-    // Використовуватиметься для надсилання http запитів в програму
+    @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private CatRepository catRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @BeforeEach
-    public void setup() {
-        this.mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).build();
-    }
-
-    // Перевіряє чи контекст правильно ініціалізувався і чи присутні всі потрібні біни
-    @Test
-    public void getServletContext_contextHasCatController() {
-        ServletContext servletContext = webApplicationContext.getServletContext();
-
-        assertNotNull(servletContext);
-        assertInstanceOf(MockServletContext.class, servletContext);
-        // Перевіряємо чи в контексті є бін catController (обʼєкт класу catController)
-        assertNotNull(webApplicationContext.getBean("catController"));
+    void setUp() {
+        catRepository.deleteAll();
     }
 
     @Test
-    public void getCats_returnsOneCat2() throws Exception {
-        // Готуємо дані для тесту
-        Cat cat = new Cat("Tom", CatBehaviour.NORMAL);
+    void testCreateCat_success() throws Exception {
+        Cat cat = new Cat("Oscar", CatBehaviour.CALM);
+
+        mockMvc.perform(post("/cats")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cat)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name", is("Oscar")))
+                .andExpect(jsonPath("$.behaviour", is("CALM")));
+    }
+
+    @Test
+    void testCreateCat_conflictAlreadyExists() throws Exception {
+        Cat cat = new Cat("Oscar", CatBehaviour.CALM);
         catRepository.save(cat);
 
-        // Виконуємо http запит, який тестуємо
-        MvcResult result = mockMvc.perform(get("/cats")).andDo(print())
-                                  .andExpect(status().isOk())
-                                  .andExpect(content().contentType(String.valueOf(MediaType.APPLICATION_JSON)))
-                                  .andReturn();
-
-        // Перевіряємо чи повернулась правильна відповідь
-        List<Cat> response = objectMapper.readValue(
-                result.getResponse().getContentAsString(),
-                objectMapper.getTypeFactory().constructCollectionType(List.class, Cat.class));
-        assertNotNull(response);
-        assertEquals(1, response.size());
-        assertEquals(cat, response.getFirst());
-
-        // Очищуємо дані
-        // В unit тестах очищувати нічого не потрібно, бо все що створено в тестовому класі
-        // перестворюється для кожного тесту. В інтергаційних тестах все створюється один раз
-        // на всі тести в класі, бо повна ініціалізація додатку і бази даних займає багато часу.
-        // Перестворення всього для кожного тесту зробило б ці тести дуже повільними.
-        // Через це все що створено в тесті потрібно видаляти в кінці тесту,
-        // інакше ці дані будуть доступні в наступних тестах.
-        catRepository.delete(cat);
+        mockMvc.perform(post("/cats")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cat)))
+                .andExpect(status().isConflict());
     }
 
     @Test
-    public void getCat_returnsCat() throws Exception {
-        // Готуємо дані для тесту
-        Cat cat = new Cat("Tom", CatBehaviour.NORMAL);
-        catRepository.save(cat);
+    void testGetAllCats() throws Exception {
+        catRepository.save(new Cat("Barsik", CatBehaviour.CALM));
+        catRepository.save(new Cat("Murzik", CatBehaviour.CRAZY));
 
-        // Виконуємо http запит, який тестуємо
-        MvcResult result = mockMvc.perform(get("/cats/Tom")).andDo(print())
-                                  .andExpect(status().isOk())
-                                  .andExpect(content().contentType(String.valueOf(MediaType.APPLICATION_JSON)))
-                                  .andReturn();
+        mockMvc.perform(get("/cats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[*].name", containsInAnyOrder("Barsik", "Murzik")));
+    }
 
-        // Перевіряємо чи повернулась правильна відповідь
-        Cat response = objectMapper.readValue(result.getResponse().getContentAsString(), Cat.class);
-        assertNotNull(response);
-        assertEquals(cat, response);
+    @Test
+    void testGetCatsByBehaviour() throws Exception {
+        catRepository.save(new Cat("Barsik", CatBehaviour.CALM));
+        catRepository.save(new Cat("Murzik", CatBehaviour.CRAZY));
 
-        // Очищуємо дані
-        catRepository.delete(cat);
+        mockMvc.perform(get("/cats")
+                        .param("behaviour", "CALM"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name", is("Barsik")))
+                .andExpect(jsonPath("$[0].behaviour", is("CALM")));
+    }
+
+    @Test
+    void testGetCatByName_found() throws Exception {
+        catRepository.save(new Cat("Tom", CatBehaviour.NORMAL));
+
+        mockMvc.perform(get("/cats/Tom"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name", is("Tom")))
+                .andExpect(jsonPath("$.behaviour", is("NORMAL")));
+    }
+
+    @Test
+    void testGetCatByName_notFound() throws Exception {
+        mockMvc.perform(get("/cats/UnknownCat"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testUpdateCat_success() throws Exception {
+        catRepository.save(new Cat("Oscar", CatBehaviour.CALM));
+
+        Cat updatedCat = new Cat("Oscar", CatBehaviour.CRAZY);
+
+        mockMvc.perform(put("/cats/Oscar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updatedCat)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name", is("Oscar")))
+                .andExpect(jsonPath("$.behaviour", is("CRAZY")));
+    }
+
+    @Test
+    void testUpdateCat_notFound() throws Exception {
+        Cat cat = new Cat("NonExistent", CatBehaviour.NORMAL);
+
+        mockMvc.perform(put("/cats/NonExistent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cat)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testDeleteCat_success() throws Exception {
+        catRepository.save(new Cat("Oscar", CatBehaviour.CALM));
+
+        mockMvc.perform(delete("/cats/Oscar"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/cats/Oscar"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testDeleteCat_notFound() throws Exception {
+        mockMvc.perform(delete("/cats/NonExistent"))
+                .andExpect(status().isNotFound());
     }
 }
